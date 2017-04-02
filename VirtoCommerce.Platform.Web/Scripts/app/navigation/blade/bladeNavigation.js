@@ -27,7 +27,7 @@ angular.module('platformWebApp')
         }
     };
 })
-.directive('vaBladeContainer', ['$compile', 'platformWebApp.bladeNavigationService', function ($compile, bladeNavigationService) {
+.directive('vaBladeContainer', ['platformWebApp.bladeNavigationService', function (bladeNavigationService) {
     return {
         restrict: 'E',
         replace: true,
@@ -47,14 +47,11 @@ angular.module('platformWebApp')
             element.attr('ng-model', "blade");
             element.removeAttr("va-blade");
             $compile(element)(scope);
+            scope.blade.$scope = scope;
 
             var mainContent = $('.cnt');
             var blade = $('.blade:last', mainContent);
             var offset = parseInt(blade.offset().left);
-
-            $timeout(function () {
-                offset = parseInt(blade.width())
-            }, 50, false);
 
             if (!scope.blade.disableOpenAnimation) {
                 blade.css('margin-left', '-' + blade.width() + 'px').addClass('__animate');
@@ -67,9 +64,8 @@ angular.module('platformWebApp')
             }
 
             $timeout(function () {
-                if (offset > mainContent.scrollLeft()) {
-                    mainContent.animate({ scrollLeft: offset + 'px' }, 500);
-                }
+                var scrollAdjustment = (offset >= mainContent.scrollLeft()) ? blade.width() : mainContent.scrollLeft();
+                mainContent.animate({ scrollLeft: offset + scrollAdjustment + 'px' }, 500);
             }, 0, false);
 
             scope.bladeMaximize = function () {

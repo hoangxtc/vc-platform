@@ -28,14 +28,10 @@ namespace VirtoCommerce.Platform.Web
                     // "~/Content/angular-gridster.css", // customized style
                     //SELECT2
                     "~/Content/select2.css", // used in selectors
-                    //Theme UI
-                    "~/Content/themes/main/css/reset.css",
+                    //Theme UI,
                     "~/Content/themes/main/css/font-awesome.css",
-                    "~/Content/themes/main/css/base-modules.css",
-                    "~/Content/themes/main/css/lang-rtl.css",
-                    "~/Content/themes/main/css/project-modules.css",
-                    "~/Content/themes/main/css/cosmetic.css"
-                    ));
+                    "~/Content/themes/main/css/main.css"
+                ));
 
             #endregion
 
@@ -55,6 +51,7 @@ namespace VirtoCommerce.Platform.Web
             var moduleCatalog = ServiceLocator.Current.GetInstance<IModuleCatalog>();
             var allModules = moduleCatalog.Modules.OfType<ManifestModuleInfo>().ToArray();
             var manifestModules = moduleCatalog.CompleteListWithDependencies(allModules)
+                .Where(x => x.State == ModuleState.Initialized)
                 .OfType<ManifestModuleInfo>()
                 .ToArray();
 

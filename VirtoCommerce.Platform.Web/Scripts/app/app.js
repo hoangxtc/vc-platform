@@ -21,18 +21,13 @@
   'focusOn',
   'textAngular',
   'ngTagsInput',
-  'pascalprecht.translate'
+  'pascalprecht.translate',
+  'angular.filter'
 ];
 
 angular.module('platformWebApp', AppDependencies).
-  controller('platformWebApp.appCtrl', ['$scope', '$window', 'platformWebApp.pushNotificationService', '$translate', '$timeout', 'platformWebApp.modules', '$state', 'platformWebApp.bladeNavigationService', function ($scope, $window, pushNotificationService, $translate, $timeout, modules, $state, bladeNavigationService) {
+  controller('platformWebApp.appCtrl', ['$rootScope', '$scope', '$window', 'platformWebApp.mainMenuService', 'platformWebApp.pushNotificationService', '$translate', '$timeout', 'platformWebApp.modules', '$state', 'platformWebApp.bladeNavigationService', 'platformWebApp.userProfile', 'platformWebApp.settings', function ($rootScope, $scope, $window, mainMenuService, pushNotificationService, $translate, $timeout, modules, $state, bladeNavigationService, userProfile, settings) {
       pushNotificationService.run();
-
-      $timeout(function () {
-          var currentLanguage = $translate.use();
-          var rtlLanguages = ['ar', 'arc', 'bcc', 'bqi', 'ckb', 'dv', 'fa', 'glk', 'he', 'lrc', 'mzn', 'pnb', 'ps', 'sd', 'ug', 'ur', 'yi'];
-          $scope.isRTL = rtlLanguages.indexOf(currentLanguage) >= 0;
-      }, 100);
 
       $scope.closeError = function () {
           $scope.platformError = undefined;
@@ -65,6 +60,82 @@ angular.module('platformWebApp', AppDependencies).
               bladeNavigationService.currentBlade.error = undefined;
           }
       });
+
+      $scope.$on('loginStatusChanged', function (event, authContext) {
+          $scope.isAuthenticated = authContext.isAuthenticated;
+      });
+
+      $scope.$on('loginStatusChanged', function (event, authContext) {
+          //reset menu to default state
+          angular.forEach(mainMenuService.menuItems, function (menuItem) { mainMenuService.resetMenuItemDefaults(menuItem); });
+          if (authContext.isAuthenticated) {
+              userProfile.load().then(function () {
+                  $translate.use(userProfile.language);
+                  updateRtl(userProfile.language);
+                  initializeMainMenu(userProfile);
+              });
+          };
+      });
+
+      $rootScope.$on('$translateChangeSuccess', function() {
+          updateRtl($translate.use());
+      });
+
+      function updateRtl(currentLanguage) {
+          var rtlLanguages = ['ar', 'arc', 'bcc', 'bqi', 'ckb', 'dv', 'fa', 'glk', 'he', 'lrc', 'mzn', 'pnb', 'ps', 'sd', 'ug', 'ur', 'yi'];
+          $rootScope.isRTL = rtlLanguages.indexOf(currentLanguage) >= 0;
+      }
+
+      $scope.mainMenu = {};
+      $scope.mainMenu.items = mainMenuService.menuItems;
+      
+      $scope.onMainMenuChanged = function (mainMenu) {
+          if ($scope.isAuthenticated) {
+              saveMainMenuState(mainMenu, userProfile);
+          }
+      }
+
+      function initializeMainMenu(profile) {
+          if (profile.mainMenuState) {
+              $scope.mainMenu.isCollapsed = profile.mainMenuState.isCollapsed;
+              angular.forEach(profile.mainMenuState.items, function(x) {
+                  var existItem = mainMenuService.findByPath(x.path);
+                  if (existItem) {
+                      angular.extend(existItem, x);
+                  }
+              });
+          }
+      }
+
+      function saveMainMenuState(mainMenu, profile) {
+          if (mainMenu && profile.$resolved) {
+              profile.mainMenuState = {
+                  isCollapsed: mainMenu.isCollapsed,
+                  items: _.map(_.filter(mainMenu.items,
+                          function(x) { return !x.isAlwaysOnBar; }),
+                      function(x) { return { path: x.path, isCollapsed: x.isCollapsed, isFavorite: x.isFavorite, order: x.order }; })
+              };
+              profile.save();
+          }
+      }
+
+      settings.getUiCustomizationSetting(function (uiCustomizationSetting) {
+          if (uiCustomizationSetting.value) {
+              $rootScope.uiCustomization = angular.fromJson(uiCustomizationSetting.value);
+          }
+      });
+
+      // DO NOT CHANGE THE FUNCTION BELOW: COPYRIGHT VIOLATION
+      $scope.initExpiration = function (x) {
+          if (x && x.expirationDate) {
+              x.hasExpired = new Date(x.expirationDate) < new Date();
+          }
+          return x;
+      };
+
+      $scope.showLicense = function () {
+          $state.go('workspace.appLicense');
+      };
 
   }])
 // Specify SignalR server URL (application URL)
@@ -110,7 +181,7 @@ angular.module('platformWebApp', AppDependencies).
     };
 })
 .config(
-  ['$stateProvider', '$httpProvider', 'uiSelectConfig', 'datepickerConfig', '$translateProvider', function ($stateProvider, $httpProvider, uiSelectConfig, datepickerConfig, $translateProvider) {
+  ['$stateProvider', '$httpProvider', 'uiSelectConfig', 'datepickerConfig', '$translateProvider', '$compileProvider', function ($stateProvider, $httpProvider, uiSelectConfig, datepickerConfig, $translateProvider, $compileProvider) {
       $stateProvider.state('workspace', {
           url: '/workspace',
           templateUrl: '$(Platform)/Scripts/app/workspace.tpl.html'
@@ -131,6 +202,10 @@ angular.module('platformWebApp', AppDependencies).
         .preferredLanguage('en')
         .fallbackLanguage('en')
         .useLocalStorage();
+
+      // Disable Debug Data in DOM ("significant performance boost").
+      // Comment the following line while debugging or execute this in browser console: angular.reloadWithDebugInfo();
+      $compileProvider.debugInfoEnabled(false);
   }])
 
 .run(
@@ -147,7 +222,9 @@ angular.module('platformWebApp', AppDependencies).
             title: 'platform.menu.home',
             icon: 'fa fa-home',
             action: function () { $state.go('workspace'); },
-            priority: 0
+            // this item must always be at the top
+            priority: 0,
+            isAlwaysOnBar: true
         };
         mainMenuService.addMenuItem(homeMenuItem);
 
@@ -155,7 +232,7 @@ angular.module('platformWebApp', AppDependencies).
             path: 'browse',
             icon: 'fa fa-search',
             title: 'platform.menu.browse',
-            priority: 90,
+            priority: 90
         };
         mainMenuService.addMenuItem(browseMenuItem);
 
@@ -163,9 +240,21 @@ angular.module('platformWebApp', AppDependencies).
             path: 'configuration',
             icon: 'fa fa-wrench',
             title: 'platform.menu.configuration',
-            priority: 91,
+            priority: 91
         };
         mainMenuService.addMenuItem(cfgMenuItem);
+
+        var moreMenuItem = {
+            path: 'more',
+            title: 'platform.menu.more',
+            headerTemplate: '$(Platform)/Scripts/app/navigation/menu/mainMenu-list-header.tpl.html',
+            contentTemplate: '$(Platform)/Scripts/app/navigation/menu/mainMenu-list-content.tpl.html',
+            // this item must always be at the bottom, so
+            // don't use just 99 number: we have INFINITE list
+            priority: Number.MAX_SAFE_INTEGER,
+            isAlwaysOnBar: true
+        };
+        mainMenuService.addMenuItem(moreMenuItem);
 
         $rootScope.$on('unauthorized', function (event, rejection) {
             if (!authService.isAuthenticated) {
@@ -189,7 +278,7 @@ angular.module('platformWebApp', AppDependencies).
             $timeout(function () {
                 if (authContext.isAuthenticated) {
                     if (!$state.current.name || $state.current.name == 'loginDialog') {
-                        homeMenuItem.action();
+                        $state.go('workspace');
                     }
                 }
                 else {
@@ -226,6 +315,13 @@ angular.module('platformWebApp', AppDependencies).
         String.prototype.endsWith = function (suffix) {
             return this.indexOf(suffix, this.length - suffix.length) !== -1;
         };
+
+        if (!angular.isDefined(Number.MIN_SAFE_INTEGER)) {
+            Number.MIN_SAFE_INTEGER = -9007199254740991;
+        }
+        if (!angular.isDefined(Number.MAX_SAFE_INTEGER)) {
+            Number.MAX_SAFE_INTEGER = 9007199254740991;
+        }
 
         // textAngular
         taOptions.toolbar = [
