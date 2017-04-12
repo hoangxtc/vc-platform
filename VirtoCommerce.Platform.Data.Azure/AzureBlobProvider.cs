@@ -90,6 +90,11 @@ namespace VirtoCommerce.Platform.Data.Azure
             var blob = container.GetBlockBlobReference(filePath);
 
             blob.Properties.ContentType = MimeTypeResolver.ResolveContentType(Path.GetFileName(filePath));
+            
+            // Leverage Browser Caching - 7days
+            // Setting Cache-Control on Azure Blobs can help reduce bandwidth and improve the performance by preventing consumers from having to continuously download resources. 
+            // More Info https://developers.google.com/speed/docs/insights/LeverageBrowserCaching
+            blob.Properties.CacheControl = "public, max-age=604800";
 
             return blob.OpenWrite();
         }
@@ -115,7 +120,10 @@ namespace VirtoCommerce.Platform.Data.Azure
                         directoryBlob.DeleteIfExists();
                     }
                     //Remove blockBlobs if url not directory
-                    var blobBlock = blobContainer.GetBlockBlobReference(absoluteUri.ToString());
+                    /* http://stackoverflow.com/questions/29285239/delete-a-blob-from-windows-azure-in-c-sharp
+                     * In Azure Storage Client Library 4.0, we changed Get*Reference methods to accept relative addresses only. */
+                    string blobName = GetOutlineFromUrl(url).Last();
+                    CloudBlockBlob blobBlock = blobContainer.GetBlockBlobReference(blobName);
                     blobBlock.DeleteIfExists();
                 }
             }

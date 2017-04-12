@@ -10,6 +10,7 @@ namespace VirtoCommerce.Platform.Core.Common
 {
 	public static class ReflectionUtility
 	{
+       
 		public static IEnumerable<string> GetPropertyNames<T>(params Expression<Func<T, object>>[] propertyExpressions)
 		{
 			var retVal = new List<string>();
@@ -129,7 +130,8 @@ namespace VirtoCommerce.Platform.Core.Common
                 retVal.AddRange(objects.Where(x => x != null).SelectMany(x => x.GetFlatObjectsListWithInterface<T>(resultList)));
 
                 //Handle collection and arrays
-                var collections = properties.Select(x => x.GetValue(obj, null))
+                var collections = properties.Where(p => p.GetIndexParameters().Length == 0)
+                                            .Select(x => x.GetValue(obj, null))
                                             .Where(x => x is IEnumerable && !(x is String))
                                             .Cast<IEnumerable>();
 
@@ -147,5 +149,19 @@ namespace VirtoCommerce.Platform.Core.Common
             return retVal.ToArray();
         }
 
+        public static bool IsDictionary(this Type type)
+        {
+            if(type == null)
+            {
+                throw new NullReferenceException("type");
+            }
+
+            var retVal = typeof(IDictionary).IsAssignableFrom(type);
+            if(!retVal)
+            {
+                retVal = type.IsGenericType && typeof(IDictionary<,>).IsAssignableFrom(type.GetGenericTypeDefinition());
+            }
+            return retVal;
+        }
     }
 }

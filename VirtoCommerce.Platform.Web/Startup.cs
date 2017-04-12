@@ -13,6 +13,7 @@ using System.Web.Routing;
 using CacheManager.Core;
 using Common.Logging;
 using Hangfire;
+using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.AspNet.Identity;
 using Microsoft.AspNet.SignalR;
 using Microsoft.AspNet.SignalR.Infrastructure;
@@ -192,30 +193,58 @@ namespace VirtoCommerce.Platform.Web
             RecurringJob.AddOrUpdate<SendNotificationsJobs>("SendNotificationsJob", x => x.Process(), "*/1 * * * *");
 
             var notificationManager = container.Resolve<INotificationManager>();
+
             notificationManager.RegisterNotificationType(() => new RegistrationEmailNotification(container.Resolve<IEmailNotificationSendingGateway>())
             {
                 DisplayName = "Registration notification",
-                Description = "This notification sends by email to client when he finish registration",
+                Description = "This notification is sent by email to a client when he finishes registration",
                 NotificationTemplate = new NotificationTemplate
                 {
+                    Subject = PlatformNotificationResource.RegistrationNotificationSubject,
                     Body = PlatformNotificationResource.RegistrationNotificationBody,
-                    Subject = PlatformNotificationResource.RegistrationNotificationSubject
+                    Language = "en-US",
                 }
             });
 
             notificationManager.RegisterNotificationType(() => new ResetPasswordEmailNotification(container.Resolve<IEmailNotificationSendingGateway>())
             {
                 DisplayName = "Reset password notification",
-                Description = "This notification sends by email to client when he want to reset his password",
+                Description = "This notification is sent by email to a client when he want to reset his password",
                 NotificationTemplate = new NotificationTemplate
                 {
+                    Subject = PlatformNotificationResource.ResetPasswordNotificationSubject,
                     Body = PlatformNotificationResource.ResetPasswordNotificationBody,
-                    Subject = PlatformNotificationResource.ResetPasswordNotificationSubject
+                    Language = "en-US",
                 }
             });
 
+            notificationManager.RegisterNotificationType(() => new TwoFactorEmailNotification(container.Resolve<IEmailNotificationSendingGateway>())
+            {
+                DisplayName = "Two factor authentication",
+                Description = "This notification contains a security token for two factor authentication",
+                NotificationTemplate = new NotificationTemplate
+                {
+                    Subject = PlatformNotificationResource.TwoFactorNotificationSubject,
+                    Body = PlatformNotificationResource.TwoFactorNotificationBody,
+                    Language = "en-US",
+                }
+            });
+
+            notificationManager.RegisterNotificationType(() => new TwoFactorSmsNotification(container.Resolve<ISmsNotificationSendingGateway>())
+            {
+                DisplayName = "Two factor authentication",
+                Description = "This notification contains a security token for two factor authentication",
+                NotificationTemplate = new NotificationTemplate
+                {
+                    Subject = PlatformNotificationResource.TwoFactorNotificationSubject,
+                    Body = PlatformNotificationResource.TwoFactorNotificationBody,
+                    Language = "en-US",
+                }
+            });
+
+            //Get initialized modules list sorted by dependency order
             var postInitializeModules = moduleCatalog.CompleteListWithDependencies(moduleCatalog.Modules.OfType<ManifestModuleInfo>())
-                .Where(m => m.ModuleInstance != null)
+                .Where(m => m.ModuleInstance != null && m.State == ModuleState.Initialized)
                 .ToArray();
 
             foreach (var module in postInitializeModules)
@@ -228,6 +257,14 @@ namespace VirtoCommerce.Platform.Web
             GlobalHost.DependencyResolver.Register(typeof(IPerformanceCounterManager), () => tempCounterManager);
             var hubConfiguration = new HubConfiguration { EnableJavaScriptProxies = false };
             app.MapSignalR("/" + moduleInitializerOptions.RoutePrefix + "signalr", hubConfiguration);
+
+            // Initialize InstrumentationKey from EnvironmentVariable("APPINSIGHTS_INSTRUMENTATIONKEY")
+            var appInsightKey = Environment.GetEnvironmentVariable("APPINSIGHTS_INSTRUMENTATIONKEY");
+
+            if (!string.IsNullOrEmpty(appInsightKey))
+            {
+                TelemetryConfiguration.Active.InstrumentationKey = appInsightKey;
+            }
         }
 
         private static Assembly CurrentDomainOnAssemblyResolve(object sender, ResolveEventArgs args)
@@ -304,17 +341,10 @@ namespace VirtoCommerce.Platform.Web
                         {
                             new ModuleSetting
                             {
-                                Name = "VirtoCommerce.Platform.Notifications.SendGrid.UserName",
+                                Name = "VirtoCommerce.Platform.Notifications.SendGrid.ApiKey",
                                 ValueType = ModuleSetting.TypeString,
-                                Title = "SendGrid UserName",
-                                Description = "Your SendGrid account username"
-                            },
-                            new ModuleSetting
-                            {
-                                Name = "VirtoCommerce.Platform.Notifications.SendGrid.Secret",
-                                ValueType = ModuleSetting.TypeSecureString,
-                                Title = "SendGrid Password",
-                                Description = "Your SendGrid account password"
+                                Title = "SendGrid API key",
+                                Description = "Your SendGrid API key"
                             }
                         }
                     },
@@ -388,6 +418,46 @@ namespace VirtoCommerce.Platform.Web
                                 IsArray = true,
                                 ArrayValues = Enum.GetNames(typeof(AccountType)),
                                 DefaultValue = AccountType.Manager.ToString()
+                            }
+                        }
+                    },
+                    new ModuleSettingsGroup
+                    {
+                        Name = "Platform|User Profile",
+                        Settings = new[]
+                        {
+                            new ModuleSetting
+                            {
+                                Name = "VirtoCommerce.Platform.UI.MainMenu.State",
+                                ValueType = ModuleSetting.TypeJson,
+                                Title = "Persisted state of main menu"
+                            },
+                            new ModuleSetting
+                            {
+                                Name = "VirtoCommerce.Platform.UI.Language",
+                                ValueType = ModuleSetting.TypeString,
+                                Title = "Language",
+                                Description = "Default language (two letter code from ISO 639-1)",
+                                DefaultValue = "en"
+                            }
+                        }
+                    },
+                    new ModuleSettingsGroup
+                    {
+                        Name = "Platform|User Interface",
+                        Settings = new[]
+                        {
+                            new ModuleSetting
+                            {
+                                Name = "VirtoCommerce.Platform.UI.Customization",
+                                ValueType = ModuleSetting.TypeJson,
+                                Title = "Customization",
+                                Description = "JSON contains personalization settings of manager UI",
+                                DefaultValue = "{\n" +
+                                               "  \"title\": \"Virto Commerce\",\n" +
+                                               "  \"logo\": \"Content/themes/main/images/logo.png\",\n" +
+                                               "  \"contrast_logo\": \"Content/themes/main/images/contrast-logo.png\"\n" +
+                                               "}"
                             }
                         }
                     }
@@ -466,7 +536,8 @@ namespace VirtoCommerce.Platform.Web
 
             #region Modularity
 
-            var externalModuleCatalog = new ExternalManifestModuleCatalog(moduleCatalog.Modules, ConfigurationManager.AppSettings.GetValues("VirtoCommerce:ModulesDataSources"), container.Resolve<ILog>());
+            var modulesDataSources = ConfigurationManager.AppSettings.SplitStringValue("VirtoCommerce:ModulesDataSources");
+            var externalModuleCatalog = new ExternalManifestModuleCatalog(moduleCatalog.Modules, modulesDataSources, container.Resolve<ILog>());
             container.RegisterType<ModulesController>(new InjectionConstructor(externalModuleCatalog, new ModuleInstaller(modulesPath, externalModuleCatalog), notifier, container.Resolve<IUserNameResolver>(), settingsManager));
 
             #endregion

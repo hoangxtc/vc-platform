@@ -15,6 +15,13 @@
                    type="password" placeholder="{{ 'platform.genericValueInput.placeholders.secure-string' | translate}}">
         </div>
     </script>
+    <script type="text/ng-template" id="dUrl.html">
+        <div class="form-input">
+            <input ng-required="currentEntity.isRequired"
+                   ng-model="context.currentPropValues[0].value"
+                   type="url" placeholder="{{ 'platform.genericValueInput.placeholders.url' | translate}}">
+        </div>
+    </script>
     <script type="text/ng-template" id="dLongText.html">
         <div class="form-input">
             <textarea ng-required="currentEntity.isRequired"
@@ -22,7 +29,7 @@
                       placeholder="{{ 'platform.genericValueInput.placeholders.long-text' | translate}}"></textarea>
         </div>
     </script>
-    <script type="text/ng-template" id="dHtml.html">
+    <script type="text/ng-template" id="dCode.html">
         <div class="form-input">
             <ui-codemirror ng-required="currentEntity.isRequired"
                            ng-model="context.currentPropValues[0].value"
@@ -51,11 +58,12 @@
     <script type="text/ng-template" id="dDateTime.html">
         <div class="form-input __calendar">
             <input ng-model="context.currentPropValues[0].value"
-                   datepicker-popup
+                   datepicker-popup="{{currentEntity.isReadonly ? 'short' : '' }}"
+                   ng-disabled="currentEntity.isReadonly"
                    is-open="datepickers.DateTime"
                    placeholder="{{ 'platform.genericValueInput.placeholders.date-time' | translate}}"
                    close-text="Close">
-            <button ng-click="open($event, 'DateTime')" type="button" class="btn">
+            <button ng-click="open($event, 'DateTime')" type="button" class="btn" ng-disabled="currentEntity.isReadonly">
                 <i class="btn-ico fa fa-calendar"></i>
             </button>
         </div>
@@ -137,7 +145,7 @@
                       placeholder="{{ 'platform.genericValueInput.placeholders.long-text-multilang' | translate}}" />
         </div>
     </script>
-    <script type="text/ng-template" id="dHtml-multilang.html">
+    <script type="text/ng-template" id="dCode-multilang.html">
         <div ng-class="{'form-group': !$first}" ng-repeat="propValue in context.currentPropValues | orderBy: 'locale'">
             <span class="flag flag-{{propValue.locale.substr(3).toLowerCase()}}"></span>
             <ui-codemirror ng-required="currentEntity.isRequired"

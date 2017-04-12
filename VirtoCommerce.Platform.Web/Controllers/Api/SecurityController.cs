@@ -44,22 +44,34 @@ namespace VirtoCommerce.Platform.Web.Controllers.Api
         /// Verifies provided credentials and if succeeded returns full user details, otherwise returns 401 Unauthorized.
         /// </remarks>
         /// <param name="model">User credentials.</param>
-        /// <response code="200"></response>
-        /// <response code="401">Invalid user name or password.</response>
         [HttpPost]
         [Route("login")]
         [ResponseType(typeof(ApplicationUserExtended))]
         [AllowAnonymous]
         public async Task<IHttpActionResult> Login(UserLogin model)
         {
-            if (await _signInManagerFactory().PasswordSignInAsync(model.UserName, model.Password, model.RememberMe, true) == SignInStatus.Success)
+            var signInManager = _signInManagerFactory();
+            var signInStatus = await signInManager.PasswordSignInAsync(model.UserName, model.Password, model.RememberMe, true);
+
+            if (signInStatus == SignInStatus.Success)
             {
                 var retVal = await _securityService.FindByNameAsync(model.UserName, UserDetails.Full);
                 //Do not allow login to admin customers and rejected users
-                if (retVal.UserState != AccountState.Rejected && !String.Equals(retVal.UserType, AccountType.Customer.ToString(), StringComparison.InvariantCultureIgnoreCase))
+                if (retVal.UserState != AccountState.Rejected && !string.Equals(retVal.UserType, AccountType.Customer.ToString(), StringComparison.InvariantCultureIgnoreCase))
                 {
                     return Ok(retVal);
                 }
+            }
+
+            if (signInStatus == SignInStatus.RequiresVerification)
+            {
+                // TODO: Add UI for choosing a two factor provider, sending the code and verifying the entered code.
+                // var userId = await signInManager.GetVerifiedUserIdAsync();
+                // var providers = await signInManager.UserManager.GetValidTwoFactorProvidersAsync(userId);
+                // var provider = providers.FirstOrDefault(); // User should choose a provider
+                // var sendCodeResult = await signInManager.SendTwoFactorCodeAsync(provider);
+                // var code = "123456"; // Get code from user
+                // var twoFactorSignInStatus = await signInManager.TwoFactorSignInAsync(provider, code, false, false);
             }
 
             return StatusCode(HttpStatusCode.Unauthorized);
@@ -264,8 +276,6 @@ namespace VirtoCommerce.Platform.Web.Controllers.Api
         /// </summary>
         /// <param name="userName"></param>
         /// <param name="changePassword">Old and new passwords.</param>
-        /// <response code="200"></response>
-        /// <response code="404">User not found.</response>
         [HttpPost]
         [Route("users/{userName}/changepassword")]
         [ResponseType(typeof(SecurityResult))]
@@ -367,7 +377,7 @@ namespace VirtoCommerce.Platform.Web.Controllers.Api
                 if (!securityResult.Succeeded)
                     result = BadRequest(securityResult.Errors != null ? string.Join(" ", securityResult.Errors) : "Unknown error.");
                 else
-                    result = Ok();
+                    result = Ok(securityResult);
             }
 
             return result;
