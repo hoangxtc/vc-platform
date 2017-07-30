@@ -1,5 +1,6 @@
 ﻿var AppDependencies = [
   'ui.router',
+  'luegg.directives',
   'googlechart',
   'gridster',
   'ui.bootstrap',
@@ -9,7 +10,6 @@
   'ngAnimate',
   'ngStorage',
   'ngResource',
-  'fiestah.money',
   'ngCookies',
   'angularMoment',
   'angularFileUpload',
@@ -21,123 +21,127 @@
   'focusOn',
   'textAngular',
   'ngTagsInput',
+  'tmh.dynamicLocale',
   'pascalprecht.translate',
   'angular.filter'
 ];
 
 angular.module('platformWebApp', AppDependencies).
-  controller('platformWebApp.appCtrl', ['$rootScope', '$scope', '$window', 'platformWebApp.mainMenuService', 'platformWebApp.pushNotificationService', '$translate', '$timeout', 'platformWebApp.modules', '$state', 'platformWebApp.bladeNavigationService', 'platformWebApp.userProfile', 'platformWebApp.settings', function ($rootScope, $scope, $window, mainMenuService, pushNotificationService, $translate, $timeout, modules, $state, bladeNavigationService, userProfile, settings) {
-      pushNotificationService.run();
+controller('platformWebApp.appCtrl', ['$rootScope', '$scope', '$window', 'platformWebApp.mainMenuService', 'platformWebApp.pushNotificationService',
+    'platformWebApp.i18n', '$timeout', 'platformWebApp.modules', '$state', 'platformWebApp.bladeNavigationService', 'platformWebApp.userProfile', 'platformWebApp.settings',
+    function ($rootScope, $scope, $window, mainMenuService, pushNotificationService,
+        i18n, $timeout, modules, $state, bladeNavigationService, userProfile, settings) {
 
-      $scope.closeError = function () {
-          $scope.platformError = undefined;
-      };
-      modules.query().$promise.then(function (results) {
-          var modulesWithErrors = _.filter(results, function (x) { return _.any(x.validationErrors); });
-          if (_.any(modulesWithErrors)) {
-              $scope.platformError = {
-                  title: modulesWithErrors.length + " modules are loaded with errors and require your attention.",
-                  detail: ''
-              };
-              _.each(modulesWithErrors, function (x) {
-                  var moduleErrors = "<br/><br/><b>" + x.id + "</b> " + x.version + "<br/>" + x.validationErrors.join("<br/>");
-                  $scope.platformError.detail += moduleErrors;
-              });
-              $state.go('workspace.modularity');
-          }
-      });
+        pushNotificationService.run();
+
+        $scope.closeError = function () {
+            $scope.platformError = undefined;
+        };
+        modules.query().$promise.then(function (results) {
+            var modulesWithErrors = _.filter(results, function (x) { return _.any(x.validationErrors); });
+            if (_.any(modulesWithErrors)) {
+                $scope.platformError = {
+                    title: modulesWithErrors.length + " modules are loaded with errors and require your attention.",
+                    detail: ''
+                };
+                _.each(modulesWithErrors, function (x) {
+                    var moduleErrors = "<br/><br/><b>" + x.id + "</b> " + x.version + "<br/>" + x.validationErrors.join("<br/>");
+                    $scope.platformError.detail += moduleErrors;
+                });
+                $state.go('workspace.modularity');
+            }
+        });
 
 
-      $scope.$on('httpError', function (event, error) {
-          if (bladeNavigationService.currentBlade) {
-              bladeNavigationService.setError(error.status + ': ' + error.statusText, bladeNavigationService.currentBlade);
-          }
-      });
+        $scope.$on('httpError', function (event, error) {
+            if (bladeNavigationService.currentBlade) {
+                bladeNavigationService.setError(error.status + ': ' + error.statusText, bladeNavigationService.currentBlade);
+            }
+        });
 
-      $scope.$on('httpRequestSuccess', function (event, data) {
-          // clear error on blade cap
-          if (bladeNavigationService.currentBlade) {
-              bladeNavigationService.currentBlade.error = undefined;
-          }
-      });
+        $scope.$on('httpRequestSuccess', function (event, data) {
+            // clear error on blade cap
+            if (bladeNavigationService.currentBlade) {
+                bladeNavigationService.currentBlade.error = undefined;
+            }
+        });
 
-      $scope.$on('loginStatusChanged', function (event, authContext) {
-          $scope.isAuthenticated = authContext.isAuthenticated;
-      });
+        $scope.$on('loginStatusChanged', function (event, authContext) {
+            $scope.isAuthenticated = authContext.isAuthenticated;
+        });
 
-      $scope.$on('loginStatusChanged', function (event, authContext) {
-          //reset menu to default state
-          angular.forEach(mainMenuService.menuItems, function (menuItem) { mainMenuService.resetMenuItemDefaults(menuItem); });
-          if (authContext.isAuthenticated) {
-              userProfile.load().then(function () {
-                  $translate.use(userProfile.language);
-                  updateRtl(userProfile.language);
-                  initializeMainMenu(userProfile);
-              });
-          };
-      });
+        $scope.$on('loginStatusChanged', function (event, authContext) {
+            //reset menu to default state
+            angular.forEach(mainMenuService.menuItems, function (menuItem) { mainMenuService.resetMenuItemDefaults(menuItem); });
+            if (authContext.isAuthenticated) {
+                userProfile.load().then(function () {
+                    i18n.changeLanguage(userProfile.language);
+                    i18n.changeRegionalFormat(userProfile.regionalFormat);
+                    i18n.changeTimeZone(userProfile.timeZone);
+                    i18n.changeTimeAgoSettings(userProfile.timeAgoSettings);
+                    initializeMainMenu(userProfile);
+                });
+            };
+        });
 
-      $rootScope.$on('$translateChangeSuccess', function() {
-          updateRtl($translate.use());
-      });
+        // TODO: Fix me! we need to detect scripts, not languages + we use to letter language codes only
+        $rootScope.$on('$translateChangeSuccess', function () {
+            var rtlLanguages = ['ar', 'arc', 'bcc', 'bqi', 'ckb', 'dv', 'fa', 'glk', 'he', 'lrc', 'mzn', 'pnb', 'ps', 'sd', 'ug', 'ur', 'yi'];
+            $rootScope.isRTL = rtlLanguages.indexOf(i18n.getLanguage()) >= 0;
+        });
 
-      function updateRtl(currentLanguage) {
-          var rtlLanguages = ['ar', 'arc', 'bcc', 'bqi', 'ckb', 'dv', 'fa', 'glk', 'he', 'lrc', 'mzn', 'pnb', 'ps', 'sd', 'ug', 'ur', 'yi'];
-          $rootScope.isRTL = rtlLanguages.indexOf(currentLanguage) >= 0;
-      }
+        $scope.mainMenu = {};
+        $scope.mainMenu.items = mainMenuService.menuItems;
 
-      $scope.mainMenu = {};
-      $scope.mainMenu.items = mainMenuService.menuItems;
-      
-      $scope.onMainMenuChanged = function (mainMenu) {
-          if ($scope.isAuthenticated) {
-              saveMainMenuState(mainMenu, userProfile);
-          }
-      }
+        $scope.onMainMenuChanged = function (mainMenu) {
+            if ($scope.isAuthenticated) {
+                saveMainMenuState(mainMenu, userProfile);
+            }
+        }
 
-      function initializeMainMenu(profile) {
-          if (profile.mainMenuState) {
-              $scope.mainMenu.isCollapsed = profile.mainMenuState.isCollapsed;
-              angular.forEach(profile.mainMenuState.items, function(x) {
-                  var existItem = mainMenuService.findByPath(x.path);
-                  if (existItem) {
-                      angular.extend(existItem, x);
-                  }
-              });
-          }
-      }
+        function initializeMainMenu(profile) {
+            if (profile.mainMenuState) {
+                $scope.mainMenu.isCollapsed = profile.mainMenuState.isCollapsed;
+                angular.forEach(profile.mainMenuState.items, function (x) {
+                    var existItem = mainMenuService.findByPath(x.path);
+                    if (existItem) {
+                        angular.extend(existItem, x);
+                    }
+                });
+            }
+        }
 
-      function saveMainMenuState(mainMenu, profile) {
-          if (mainMenu && profile.$resolved) {
-              profile.mainMenuState = {
-                  isCollapsed: mainMenu.isCollapsed,
-                  items: _.map(_.filter(mainMenu.items,
-                          function(x) { return !x.isAlwaysOnBar; }),
-                      function(x) { return { path: x.path, isCollapsed: x.isCollapsed, isFavorite: x.isFavorite, order: x.order }; })
-              };
-              profile.save();
-          }
-      }
+        function saveMainMenuState(mainMenu, profile) {
+            if (mainMenu && profile.$resolved) {
+                profile.mainMenuState = {
+                    isCollapsed: mainMenu.isCollapsed,
+                    items: _.map(_.filter(mainMenu.items,
+                            function (x) { return !x.isAlwaysOnBar; }),
+                        function (x) { return { path: x.path, isCollapsed: x.isCollapsed, isFavorite: x.isFavorite, order: x.order }; })
+                };
+                profile.save();
+            }
+        }
 
-      settings.getUiCustomizationSetting(function (uiCustomizationSetting) {
-          if (uiCustomizationSetting.value) {
-              $rootScope.uiCustomization = angular.fromJson(uiCustomizationSetting.value);
-          }
-      });
+        settings.getUiCustomizationSetting(function (uiCustomizationSetting) {
+            if (uiCustomizationSetting.value) {
+                $rootScope.uiCustomization = angular.fromJson(uiCustomizationSetting.value);
+            }
+        });
 
-      // DO NOT CHANGE THE FUNCTION BELOW: COPYRIGHT VIOLATION
-      $scope.initExpiration = function (x) {
-          if (x && x.expirationDate) {
-              x.hasExpired = new Date(x.expirationDate) < new Date();
-          }
-          return x;
-      };
+        // DO NOT CHANGE THE FUNCTION BELOW: COPYRIGHT VIOLATION
+        $scope.initExpiration = function (x) {
+            if (x && x.expirationDate) {
+                x.hasExpired = new Date(x.expirationDate) < new Date();
+            }
+            return x;
+        };
 
-      $scope.showLicense = function () {
-          $state.go('workspace.appLicense');
-      };
+        $scope.showLicense = function () {
+            $state.go('workspace.appLicense');
+        };
 
-  }])
+    }])
 // Specify SignalR server URL (application URL)
 .factory('platformWebApp.signalRServerName', ['$location', function ($location) {
     var retVal = $location.url() ? $location.absUrl().slice(0, -$location.url().length - 1) : $location.absUrl();
@@ -180,42 +184,55 @@ angular.module('platformWebApp', AppDependencies).
         return $q.when({});
     };
 })
-.config(
-  ['$stateProvider', '$httpProvider', 'uiSelectConfig', 'datepickerConfig', '$translateProvider', '$compileProvider', function ($stateProvider, $httpProvider, uiSelectConfig, datepickerConfig, $translateProvider, $compileProvider) {
-      $stateProvider.state('workspace', {
-          url: '/workspace',
-          templateUrl: '$(Platform)/Scripts/app/workspace.tpl.html'
-      });
+.config(['$stateProvider', '$httpProvider', 'uiSelectConfig', 'datepickerConfig', 'datepickerPopupConfig', 'tagsInputConfigProvider', '$compileProvider',
+    function ($stateProvider, $httpProvider, uiSelectConfig, datepickerConfig, datepickerPopupConfig, tagsInputConfigProvider, $compileProvider) {
 
-      //Add interceptor
-      $httpProvider.interceptors.push('platformWebApp.httpErrorInterceptor');
-      //ui-select set selectize as default theme
-      uiSelectConfig.theme = 'select2';
+        RegExp.escape = function (str) {
+            return str.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, "\\$&");
+        };
 
-      datepickerConfig.showWeeks = false;
+        $stateProvider.state('workspace', {
+            url: '/workspace',
+            templateUrl: '$(Platform)/Scripts/app/workspace.tpl.html'
+        });
 
-      //Localization
-      // https://angular-translate.github.io/docs/#/guide
-      $translateProvider.useUrlLoader('api/platform/localization')
-        .useLoaderCache(true)
-        .useSanitizeValueStrategy('escapeParameters')
-        .preferredLanguage('en')
-        .fallbackLanguage('en')
-        .useLocalStorage();
+        //Add interceptor
+        $httpProvider.interceptors.push('platformWebApp.httpErrorInterceptor');
+        //ui-select set selectize as default theme
+        uiSelectConfig.theme = 'select2';
 
-      // Disable Debug Data in DOM ("significant performance boost").
-      // Comment the following line while debugging or execute this in browser console: angular.reloadWithDebugInfo();
-      $compileProvider.debugInfoEnabled(false);
-  }])
+        datepickerConfig.showWeeks = false;
+        datepickerPopupConfig.datepickerPopup = "mediumDate";
 
-.run(
-  ['$rootScope', '$state', '$stateParams', 'platformWebApp.authService', 'platformWebApp.mainMenuService', 'platformWebApp.pushNotificationService', '$animate', '$templateCache', 'gridsterConfig', 'taOptions', '$timeout', 'platformWebApp.bladeNavigationService',
-    function ($rootScope, $state, $stateParams, authService, mainMenuService, pushNotificationService, $animate, $templateCache, gridsterConfig, taOptions, $timeout, bladeNavigationService) {
+        tagsInputConfigProvider.setDefaults('tagsInput', {
+            addOnEnter: true,
+            addOnSpace: false,
+            addOnComma: false,
+            addOnBlur: true,
+            addOnParse: true,
+            replaceSpacesWithDashes: false,
+            pasteSplitPattern: ";"
+        });
+
+        // Disable Debug Data in DOM ("significant performance boost").
+        // Comment the following line while debugging or execute this in browser console: angular.reloadWithDebugInfo();
+        $compileProvider.debugInfoEnabled(false);
+    }])
+.run(['$rootScope', '$state', '$stateParams', 'platformWebApp.authService', 'platformWebApp.mainMenuService', 'platformWebApp.pushNotificationService', '$animate', '$templateCache', 'gridsterConfig', 'taOptions', '$timeout',
+    function ($rootScope, $state, $stateParams, authService, mainMenuService, pushNotificationService, $animate, $templateCache, gridsterConfig, taOptions, $timeout) {
+
         //Disable animation
         $animate.enabled(false);
 
         $rootScope.$state = $state;
         $rootScope.$stateParams = $stateParams;
+        $rootScope.$on('$stateChangeStart', function (event, toState) {
+            if (toState.name === 'resetpasswordDialog') {
+                $rootScope.preventLoginDialog = true;
+            } else if ($rootScope.preventLoginDialog && toState.name === 'loginDialog') {
+                event.preventDefault(); // Prevent state change
+            }
+        });
 
         var homeMenuItem = {
             path: 'home',
@@ -262,16 +279,12 @@ angular.module('platformWebApp', AppDependencies).
             }
         });
 
-
-
         //server error handling
         //$rootScope.$on('httpError', function (event, rejection) {
         //    if (!(rejection.config.url.indexOf('api/platform/notification') + 1)) {
         //        pushNotificationService.error({ title: 'HTTP error', description: rejection.status + ' — ' + rejection.statusText, extendedData: rejection.data });
         //    }
         //});
-
-
 
         $rootScope.$on('loginStatusChanged', function (event, authContext) {
             //timeout need because $state not fully loading in run method and need to wait little time
@@ -311,6 +324,10 @@ angular.module('platformWebApp', AppDependencies).
             }
             return hash;
         };
+
+        String.prototype.capitalize = function () {
+            return this.charAt(0).toUpperCase() + this.substr(1).toLowerCase();
+        }
 
         if (!String.prototype.startsWith) {
             String.prototype.startsWith = function (searchString, position) {

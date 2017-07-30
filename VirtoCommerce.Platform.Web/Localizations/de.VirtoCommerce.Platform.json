@@ -1,4 +1,4 @@
-{
+﻿{
   "platform": {
     "menu": {
 	   "home":"Start",
@@ -27,7 +27,8 @@
           "name": " Name",
           "size": " Größe",
           "modified": "Geändert",
-          "actions": "Aktionen"
+          "actions": "Aktionen",
+          "group": "Groep"
         }
       },
       "asset-upload": {
@@ -67,6 +68,7 @@
           "multilingual": "Mehrsprachig",
           "dictionary": "Wörterbuch",
           "description": "Beschreibung",
+          "display-order": "Bestellung anzeigen",
           "display-name": "Anzeigename",
           "value-type": "Typ",
           "dictionary-values": "Wörterbucheinträge",
@@ -74,7 +76,8 @@
         },
         "placeholders": {
           "description": "Beschreibung der Eigenschaft",
-          "display-name": "Anzeigename eingeben..."
+          "display-name": "Anzeigename eingeben...",
+          "display-order": "Bestellung anzeigen"
         },
         "validations": {
           "multivalue": "Mehrwert-Eigenschaft kann nur Kurztext-, Integer- oder Dezimal-Wert-Typ haben.",
@@ -434,10 +437,11 @@
           "account-type": "Kontentyp",
           "login": "Einloggen",
           "account-state": "Konto Zustand",
-          "container-id": "Container (Shop) ID"
+          "account-email": "E-mail"
         },
         "placeholders": {
-          "account-type": "Wählen Sie aus..."
+          "account-type": "Wählen Sie aus...",
+          "email": "Voer email in"
         }
       },
       "account-list": {
@@ -553,13 +557,15 @@
       },
       "new-account-wizard": {
         "labels": {
+          "email":  "E-mail",
           "login": "Einloggen",
           "password": "Passwort",
           "repeat-password": "Passwort wiederholen",
           "assign-roles": "Zuweisen von Rollen"
         },
         "placeholders": {
-          "login": "E-Mail-Adresse eingeben",
+          "email": "E-Mail-Adresse eingeben",
+          "login": "Einloggen eingeben",
           "password": "Neues Passwort eingeben",
           "repeat-password": "Neues Passwort wiederholen"
         }
@@ -595,7 +601,9 @@
       "user-profile": {
         "title": "User Profil",
         "labels": {
-          "set-language": "Set Manager Sprache"
+          "language": "Sprache",
+          "regional-format": "Regionales Format",
+          "timezone": "Zeitzone"
         }
       }
     },
@@ -620,7 +628,7 @@
         "license-absent": "Common License",
         "license-present": "{{type}} Lizenz",
         "community": "Sie nutzen die Community Edition. klicken Sie hier um eine kommerzielle Lizenz zu beantragen.",
-        "expired": "Ihre Lizenz ist am {{expirationDate | date}} abgelaufen, bitte erneuern."
+        "expired": "Ihre Lizenz ist am {{expirationDate | amParse | date}} abgelaufen, bitte erneuern."
       },
       "modulesAutoInstallation": {
         "labels": {
@@ -729,6 +737,10 @@
       "api-key-delete": {
         "title": "Bestätigung löschen",
         "message": "Sind Sie sicher, dass Sie diese API-Schlüssel löschen?"
+      },
+      "app-restart": {
+        "title": "Anwendungsneustart",
+        "message": "Sind Sie sicher, dass Sie die Anwendung neu starten möchten?"
       }
     }
   }

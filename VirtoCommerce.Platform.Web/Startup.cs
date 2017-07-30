@@ -35,9 +35,11 @@ using VirtoCommerce.Platform.Core.PushNotifications;
 using VirtoCommerce.Platform.Core.Security;
 using VirtoCommerce.Platform.Core.Serialization;
 using VirtoCommerce.Platform.Core.Settings;
+using VirtoCommerce.Platform.Core.Web.Common;
 using VirtoCommerce.Platform.Data.Assets;
 using VirtoCommerce.Platform.Data.Azure;
 using VirtoCommerce.Platform.Data.ChangeLog;
+using VirtoCommerce.Platform.Data.Common;
 using VirtoCommerce.Platform.Data.DynamicProperties;
 using VirtoCommerce.Platform.Data.ExportImport;
 using VirtoCommerce.Platform.Data.Infrastructure.Interceptors;
@@ -77,7 +79,7 @@ namespace VirtoCommerce.Platform.Web
             Configuration(app, "~", string.Empty);
         }
 
-        public void Configuration(IAppBuilder app, string virtualRoot, string routPrefix)
+        public void Configuration(IAppBuilder app, string virtualRoot, string routePrefix)
         {
             VirtualRoot = virtualRoot;
 
@@ -86,8 +88,7 @@ namespace VirtoCommerce.Platform.Web
             var modulesVirtualPath = VirtualRoot + "/Modules";
             var modulesPhysicalPath = HostingEnvironment.MapPath(modulesVirtualPath).EnsureEndSeparator();
 
-            // Try to include modules directory to shadow copy directories
-            // Ignore any errors, because method AppDomain.CurrentDomain.SetShadowCopyPath is obsolete
+            // Try to add modules directory to shadow copy directories
             try
             {
 #pragma warning disable 618
@@ -96,6 +97,7 @@ namespace VirtoCommerce.Platform.Web
             }
             catch (Exception)
             {
+                // Ignore any errors, because method AppDomain.CurrentDomain.SetShadowCopyPath is obsolete
             }
 
             AppDomain.CurrentDomain.AssemblyResolve += CurrentDomainOnAssemblyResolve;
@@ -104,15 +106,20 @@ namespace VirtoCommerce.Platform.Web
             var bootstrapper = new VirtoCommercePlatformWebBootstrapper(modulesVirtualPath, modulesPhysicalPath, _assembliesPath);
             bootstrapper.Run();
 
-            var container = bootstrapper.Container;
+            SetupContainer(app, bootstrapper.Container, new HostingEnvironmentPathMapper(), virtualRoot, routePrefix, modulesPhysicalPath);
+        }
+
+        public static void SetupContainer(IAppBuilder app, IUnityContainer container, IPathMapper pathMapper,
+            string virtualRoot, string routePrefix, string modulesPhysicalPath)
+        {
             container.RegisterInstance(app);
 
             var moduleInitializerOptions = (ModuleInitializerOptions)container.Resolve<IModuleInitializerOptions>();
             moduleInitializerOptions.VirtualRoot = virtualRoot;
-            moduleInitializerOptions.RoutePrefix = routPrefix;
+            moduleInitializerOptions.RoutePrefix = routePrefix;
 
             //Initialize Platform dependencies
-            const string connectionStringName = "VirtoCommerce";
+            var connectionStringName = ConnectionStringHelper.GetConnectionStringName("VirtoCommerce");
 
             var hangfireOptions = new HangfireOptions
             {
@@ -122,7 +129,7 @@ namespace VirtoCommerce.Platform.Web
             };
             var hangfireLauncher = new HangfireLauncher(hangfireOptions);
 
-            InitializePlatform(app, container, connectionStringName, hangfireLauncher, modulesPhysicalPath);
+            InitializePlatform(app, container, pathMapper, connectionStringName, hangfireLauncher, modulesPhysicalPath);
 
             var moduleManager = container.Resolve<IModuleManager>();
             var moduleCatalog = container.Resolve<IModuleCatalog>();
@@ -130,7 +137,7 @@ namespace VirtoCommerce.Platform.Web
             var applicationBase = AppDomain.CurrentDomain.SetupInformation.ApplicationBase.EnsureEndSeparator();
 
             // Register URL rewriter for platform scripts
-            var scriptsPhysicalPath = HostingEnvironment.MapPath(VirtualRoot + "/Scripts").EnsureEndSeparator();
+            var scriptsPhysicalPath = pathMapper.MapPath(VirtualRoot + "/Scripts").EnsureEndSeparator();
             var scriptsRelativePath = MakeRelativePath(applicationBase, scriptsPhysicalPath);
             var platformUrlRewriterOptions = new UrlRewriterOptions();
             platformUrlRewriterOptions.Items.Add(PathString.FromUriComponent("/$(Platform)/Scripts"), "");
@@ -175,12 +182,13 @@ namespace VirtoCommerce.Platform.Web
 
             // Post-initialize
 
-            // Platform MVC configuration
+            // Register MVC areas unless running in the Web Platform Installer mode
             if (IsApplication)
             {
                 AreaRegistration.RegisterAllAreas();
             }
 
+            // Register other MVC resources
             GlobalConfiguration.Configure(WebApiConfig.Register);
             FilterConfig.RegisterGlobalFilters(GlobalFilters.Filters);
             RouteConfig.RegisterRoutes(RouteTable.Routes);
@@ -223,7 +231,7 @@ namespace VirtoCommerce.Platform.Web
             notificationManager.RegisterNotificationType(() => new ResetPasswordEmailNotification(container.Resolve<IEmailNotificationSendingGateway>())
             {
                 DisplayName = "Reset password notification",
-                Description = "This notification is sent by email to a client when he want to reset his password",
+                Description = "This notification is sent by email to a client upon reset password request",
                 NotificationTemplate = new NotificationTemplate
                 {
                     Subject = PlatformNotificationResource.ResetPasswordNotificationSubject,
@@ -300,7 +308,7 @@ namespace VirtoCommerce.Platform.Web
             return assembly;
         }
 
-        private static void InitializePlatform(IAppBuilder app, IUnityContainer container, string connectionStringName, HangfireLauncher hangfireLauncher, string modulesPath)
+        private static void InitializePlatform(IAppBuilder app, IUnityContainer container, IPathMapper pathMapper, string connectionStringName, HangfireLauncher hangfireLauncher, string modulesPath)
         {
             container.RegisterType<ICurrentUser, CurrentUser>(new HttpContextLifetimeManager());
             container.RegisterType<IUserNameResolver, UserNameResolver>();
@@ -321,37 +329,44 @@ namespace VirtoCommerce.Platform.Web
 
             #endregion
 
-
             Func<IPlatformRepository> platformRepositoryFactory = () => new PlatformRepository(connectionStringName, container.Resolve<AuditableInterceptor>(), new EntityPrimaryKeyGeneratorInterceptor());
             container.RegisterType<IPlatformRepository>(new InjectionFactory(c => platformRepositoryFactory()));
             container.RegisterInstance(platformRepositoryFactory);
             var moduleCatalog = container.Resolve<IModuleCatalog>();
 
             #region Caching
+
             //Cure for System.Runtime.Caching.MemoryCache freezing 
             //https://www.zpqrtbnk.net/posts/appdomains-threads-cultureinfos-and-paracetamol
             app.SanitizeThreadCulture();
             ICacheManager<object> cacheManager = null;
+
             //Try to load cache configuration from web.config first
             //Should be aware to using Web cache cache handle because it not worked in native threads. (Hangfire jobs)
-            if (ConfigurationManager.GetSection(CacheManagerSection.DefaultSectionName) != null && ConfigurationManager.GetSection("platformCache") != null)
+            var cacheManagerSection = ConfigurationManager.GetSection(CacheManagerSection.DefaultSectionName) as CacheManagerSection;
+            if (cacheManagerSection != null && cacheManagerSection.CacheManagers.Any(p => p.Name.EqualsInvariant("platformCache")))
             {
                 var configuration = ConfigurationBuilder.LoadConfiguration("platformCache");
-                configuration.LoggerFactoryType = typeof(CacheManagerLoggerFactory);
-                configuration.LoggerFactoryTypeArguments = new[] { container.Resolve<ILog>() };
-                cacheManager = CacheFactory.FromConfiguration<object>(configuration);
+
+                if (configuration != null)
+                {
+                    configuration.LoggerFactoryType = typeof(CacheManagerLoggerFactory);
+                    configuration.LoggerFactoryTypeArguments = new object[] { container.Resolve<ILog>() };
+                    cacheManager = CacheFactory.FromConfiguration<object>(configuration);
+                }
             }
-            else
+            if (cacheManager == null)
             {
                 cacheManager = CacheFactory.Build("platformCache", settings =>
-                {                 
+                {
                     settings.WithUpdateMode(CacheUpdateMode.Up)
                             .WithSystemRuntimeCacheHandle("memCacheHandle")
                             .WithExpiration(ExpirationMode.Sliding, TimeSpan.FromMinutes(5));
                 });
-            }       
-        
+            }
+
             container.RegisterInstance(cacheManager);
+
             #endregion
 
             #region Settings
@@ -466,8 +481,58 @@ namespace VirtoCommerce.Platform.Web
                                 Name = "VirtoCommerce.Platform.UI.Language",
                                 ValueType = ModuleSetting.TypeString,
                                 Title = "Language",
-                                Description = "Default language (two letter code from ISO 639-1)",
+                                Description = "Default language (two letter code from ISO 639-1, case-insensitive). Example: en, de",
                                 DefaultValue = "en"
+                            },
+                            new ModuleSetting
+                            {
+                                Name = "VirtoCommerce.Platform.UI.RegionalFormat",
+                                ValueType = ModuleSetting.TypeString,
+                                Title = "Regional format",
+                                Description = "Default regional format (CLDR locale code, with dash or underscore as delemiter, case-insensitive). Example: en, en_US, sr_Cyrl, sr_Cyrl_RS",
+                                DefaultValue = "en"
+                            },
+                            new ModuleSetting
+                            {
+                                Name = "VirtoCommerce.Platform.UI.TimeZone",
+                                ValueType = ModuleSetting.TypeString,
+                                Title = "Time zone",
+                                Description = "Default time zone (IANA time zone name [tz database], exactly as in database, case-sensitive). Examples: America/New_York, Europe/Moscow"
+                            },
+                            new ModuleSetting
+                            {
+                                Name = "VirtoCommerce.Platform.UI.UseTimeAgo",
+                                ValueType = ModuleSetting.TypeBoolean,
+                                Title = "Use time ago format when is possible",
+                                Description = "When set to true (by default), system will display date in format like 'a few seconds ago' when possible",
+                                DefaultValue = true.ToString()
+                            },
+                            new ModuleSetting
+                            {
+                                Name = "VirtoCommerce.Platform.UI.FullDateThreshold",
+                                ValueType = ModuleSetting.TypeInteger,
+                                Title = "Full date threshold",
+                                Description = "Number of units after time ago format will be switched to full date format"
+                            },
+                            new ModuleSetting
+                            {
+                                Name = "VirtoCommerce.Platform.UI.FullDateThresholdUnit",
+                                ValueType = ModuleSetting.TypeString,
+                                Title = "Full date threshold unit",
+                                Description = "Unit of full date threshold",
+                                DefaultValue = "Never",
+                                AllowedValues = new[]
+                                {
+                                    "Never",
+                                    "Seconds",
+                                    "Minutes",
+                                    "Hours",
+                                    "Days",
+                                    "Weeks",
+                                    "Months",
+                                    "Quarters",
+                                    "Years"
+                                }
                             }
                         }
                     },
@@ -544,11 +609,11 @@ namespace VirtoCommerce.Platform.Web
 
             #region Assets
 
-            var blobConnectionString = BlobConnectionString.Parse(ConfigurationManager.ConnectionStrings["AssetsConnectionString"].ConnectionString);
+            var blobConnectionString = BlobConnectionString.Parse(ConnectionStringHelper.GetConnectionString("AssetsConnectionString"));
 
             if (string.Equals(blobConnectionString.Provider, FileSystemBlobProvider.ProviderName, StringComparison.OrdinalIgnoreCase))
             {
-                var fileSystemBlobProvider = new FileSystemBlobProvider(NormalizePath(blobConnectionString.RootPath), blobConnectionString.PublicUrl);
+                var fileSystemBlobProvider = new FileSystemBlobProvider(NormalizePath(pathMapper, blobConnectionString.RootPath), blobConnectionString.PublicUrl);
 
                 container.RegisterInstance<IBlobStorageProvider>(fileSystemBlobProvider);
                 container.RegisterInstance<IBlobUrlResolver>(fileSystemBlobProvider);
@@ -612,13 +677,13 @@ namespace VirtoCommerce.Platform.Web
             #endregion
         }
 
-        private static string NormalizePath(string path)
+        private static string NormalizePath(IPathMapper pathMapper, string path)
         {
             string retVal;
 
             if (path.StartsWith("~"))
             {
-                retVal = HostingEnvironment.MapPath(path);
+                retVal = pathMapper.MapPath(path);
             }
             else if (Path.IsPathRooted(path))
             {
@@ -626,7 +691,7 @@ namespace VirtoCommerce.Platform.Web
             }
             else
             {
-                retVal = HostingEnvironment.MapPath("~/");
+                retVal = pathMapper.MapPath("~/");
                 retVal += path;
             }
 

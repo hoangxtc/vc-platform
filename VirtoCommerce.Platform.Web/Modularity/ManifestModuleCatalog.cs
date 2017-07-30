@@ -1,13 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Configuration;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
-using FileLock;
 using VirtoCommerce.Platform.Core.Common;
 using VirtoCommerce.Platform.Core.Modularity;
-using VirtoCommerce.Platform.Core.Properties;
+using VirtoCommerce.Platform.Web.Util;
 
 namespace VirtoCommerce.Platform.Web.Modularity
 {
@@ -39,37 +39,17 @@ namespace VirtoCommerce.Platform.Web.Modularity
             if (string.IsNullOrEmpty(contentPhysicalPath))
                 throw new InvalidOperationException("The ContentPhysicalPath cannot contain a null value or be empty");
 
-            //Use lock file in file system to synhronize multiple platform instances initialization (to avoid collisions on initialization process)
-            var fileLock = SimpleFileLock.Create("vc-lock", TimeSpan.FromMinutes(1));
-            var needCopyAssemblies = fileLock.TryAcquireLock();
+            if (!Directory.Exists(_assembliesPath))
+            {
+                Directory.CreateDirectory(_assembliesPath);
+            }
 
             if (!contentPhysicalPath.EndsWith("\\", StringComparison.OrdinalIgnoreCase))
                 contentPhysicalPath += "\\";
 
             var rootUri = new Uri(contentPhysicalPath);
 
-            if (needCopyAssemblies)
-            {
-                if (!Directory.Exists(_assembliesPath))
-                {
-                    Directory.CreateDirectory(_assembliesPath);
-                }
-
-                // Clear ~/moules directory from old assemblies
-                // Ignore any errors, because shadow copy may not work
-                try
-                {
-                    foreach(var assembly in Directory.GetFiles(_assembliesPath))
-                    {
-                        File.Delete(assembly);
-                    }
-                }
-                catch (Exception)
-                {
-                }
-
-                CopyAssemblies(_modulesLocalPath, _assembliesPath);
-            }
+            CopyAssemblies(_modulesLocalPath, _assembliesPath);
 
             foreach (var pair in GetModuleManifests())
             {
@@ -77,10 +57,8 @@ namespace VirtoCommerce.Platform.Web.Modularity
                 var manifestPath = pair.Key;
 
                 var modulePath = Path.GetDirectoryName(manifestPath);
-                if (needCopyAssemblies)
-                {
-                    CopyAssemblies(modulePath, _assembliesPath);
-                }
+
+                CopyAssemblies(modulePath, _assembliesPath);
 
                 var moduleVirtualPath = GetModuleVirtualPath(rootUri, modulePath);
                 ConvertVirtualPath(manifest.Scripts, moduleVirtualPath);
@@ -97,17 +75,6 @@ namespace VirtoCommerce.Platform.Web.Modularity
                 moduleInfo.IsInstalled = true;
                 AddModule(moduleInfo);
             }
-         
-            //Wait until other (first) platform instance finished initialization (copying assemblies)
-            if(!needCopyAssemblies)
-            {
-                while (!fileLock.TryAcquireLock())
-                {
-                    Thread.Sleep(500);
-                }
-            }
-            //Release file system lock
-            fileLock.ReleaseLock();
         }
 
         public override void Validate()
@@ -124,7 +91,19 @@ namespace VirtoCommerce.Platform.Web.Modularity
                 {
                     module.Errors.Add(string.Format("module platform version {0} is incompatible with current {1}", module.PlatformVersion, PlatformVersion.CurrentVersion));
                 }
-           
+
+                //Check that incompatible modules does not installed
+                if (!module.Incompatibilities.IsNullOrEmpty())
+                {
+                    var installedIncompatibilities = modules.Select(x => x.Identity).Join(module.Incompatibilities, x => x.Id, y => y.Id, (x, y) => new { x, y })
+                                                            .Where(g => g.y.Version.IsCompatibleWith(g.x.Version)).Select(g => g.x)
+                                                            .ToArray();
+                    if (installedIncompatibilities.Any())
+                    {
+                        module.Errors.Add(string.Format("{0} is incompatible with installed {1}. You should uninstall these modules first.", module, string.Join(", ", installedIncompatibilities.Select(x => x.ToString()))));
+                    }
+                }
+
                 foreach (var declaredDependency in module.Dependencies)
                 {
                     var installedDependency = modules.First(x => x.Id.EqualsInvariant(declaredDependency.Id));

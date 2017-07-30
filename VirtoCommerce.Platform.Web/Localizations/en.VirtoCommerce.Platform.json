@@ -1,20 +1,20 @@
 ﻿{
     "platform": {
-      "menu": {
-        "home": "Home",
-        "browse": "Browse",
-        "configuration": "Configuration",
-        "notifications": "Notifications",
-        "more": "More",
-        "settings": "Settings",
-        "dynamic-properties": "Dynamic properties",
-        "security": "Security",
-        "modules": "Modules",
-        "export-import": "Export & Import",
-        "user-profile": "User profile",
-        "assets": "Assets",
-        "toggle-favorites": "Shift + Space to toggle favorites"
-      },
+        "menu": {
+            "home": "Home",
+            "browse": "Browse",
+            "configuration": "Configuration",
+            "notifications": "Notifications",
+            "more": "More",
+            "settings": "Settings",
+            "dynamic-properties": "Dynamic properties",
+            "security": "Security",
+            "modules": "Modules",
+            "export-import": "Export & Import",
+            "user-profile": "User profile",
+            "assets": "Assets",
+            "toggle-favorites": "Shift + Space to toggle favorites"
+        },
         "navigation": {
             "back": "Back",
             "bread-crumb-top": "All"
@@ -27,7 +27,9 @@
                     "name": "Name",
                     "size": "Size",
                     "modified": "Modified",
-                    "actions": "Actions"
+                    "actions": "Actions",
+                    "group": "Group",
+                    "language": "Language" 
                 }
             },
             "asset-upload": {
@@ -67,6 +69,7 @@
                     "multilingual": "Multilingual",
                     "dictionary": "Dictionary",
                     "description": "Description",
+                    "display-order": "Display order",
                     "display-name": "Display name",
                     "value-type": "Value Type",
                     "dictionary-values": "Dictionary values",
@@ -74,7 +77,8 @@
                 },
                 "placeholders": {
                     "description": "Enter property description",
-                    "display-name": "Enter display name..."
+                    "display-name": "Enter display name...",
+                    "display-order": "Display order"
                 },
                 "validations": {
                     "multivalue": "Multivalue property can have only ShortText, Integer or Decimal value type.",
@@ -126,7 +130,6 @@
             "export-main": {
                 "title": "Data export",
                 "labels": {
-                    "select-file": "Select file to import",
                     "platform-entries": "Platform entries",
                     "choose-modules": "Choose modules to export",
                     "download-url": "Download Url",
@@ -154,7 +157,7 @@
                 "title": "Data import",
                 "labels": {
                     "start-import": "Start import",
-                    "select-file": "Select file to import",
+                    "select-file": "Select .zip file to import. The file must be produced by Commerce Manager data export.",
                     "upload-progress": "Upload progress",
                     "import-data-information": "Import data information",
                     "author": "Author",
@@ -434,10 +437,11 @@
                     "account-type": "Account type",
                     "login": "Login",
                     "account-state": "Account state",
-                    "container-id": "Container (store) ID"
+                    "account-email": "Email"
                 },
                 "placeholders": {
-                    "account-type": "Select ..."
+                    "account-type": "Select ...",
+                    "email": "Enter email"
                 }
             },
             "account-list": {
@@ -521,7 +525,31 @@
                     "login": "Login",
                     "password": "Password",
                     "remember-me": "Remember me",
+                    "forgot-password": "Forgot your password?",
                     "log-in": "Log in"
+                }
+            },
+            "forgotpassword": {
+                "title": "Forgot your password?",
+                "labels": {
+                    "login": "Login or email",
+                    "description": "We will send you an email with instructions on how to reset your password.",
+                    "success": "Email with instructions has been sent to you.",
+                    "fail": "Sorry, we could't reset password for this user.",
+                    "back": "Back",
+                    "submit": "Submit"
+                },
+                "placeholders": {
+                    "login-or-email": "Please enter login or email"
+                }
+            },
+            "resetpassword": {
+                "title": "Password reset",
+                "labels": {
+                    "success": "Your password was reset",
+                    "fail": "Sorry, we couldn't reset password for this user.",
+                    "submit": "Reset",
+                    "log-in": "Sign in"
                 }
             },
             "license": {
@@ -554,12 +582,14 @@
             "new-account-wizard": {
                 "labels": {
                     "login": "Login",
+                    "email": "Email",
                     "password": "Password",
                     "repeat-password": "Repeat password",
                     "assign-roles": "Assign roles"
                 },
                 "placeholders": {
-                    "login": "Enter email address",
+                    "email": "Enter email",
+                    "login": "Enter login",
                     "password": "Enter new password",
                     "repeat-password": "Repeat new password"
                 }
@@ -595,7 +625,31 @@
             "user-profile": {
                 "title": "User profile",
                 "labels": {
-                    "set-language": "Set Manager language"
+                    "language": "Language",
+                    "language-description": "Display language. Clear to use browser or fallback language.",
+                    "regional-format": "Regional format",
+                    "regional-format-description": "Regional format of numbers, currency, date and time. Clear to use browser or fallback regional format.",
+                    "time-zone": "Time zone",
+                    "time-zone-description": "Current user time zone in IANA (tz database) format. Select the nearest city in your time zone. Clear to use browser or fallback time zone.",
+                    "use-time-ago": "Use time ago format if it is possible",
+                    "full-date-threshold-group": "Use full date format for dates earlier than...",
+                    "full-date-threshold-description": "Numeric value of time units",
+                    "full-date-threshold-unit-description": "Time unit (i.e. hours or years)"
+                },
+                "placeholders": {
+                    "full-date-threshold": "Enter threshold value",
+                    "full-date-threshold-unit": "Select threshold unit"
+                },
+                "full-date-threshold-units": {
+                    "Never": "Never",
+                    "Seconds": "Seconds",
+                    "Minutes": "Minutes",
+                    "Hours": "Hours",
+                    "Days": "Days",
+                    "Weeks": "Weeks",
+                    "Months": "Months",
+                    "Quarters": "Quarters",
+                    "Years": "Years"
                 }
             }
         },
@@ -620,7 +674,7 @@
                 "license-absent": "Community license",
                 "license-present": "{{type}} license",
                 "community": "Running community edition, click to request a commercial license.",
-                "expired": "You license has expired on {{expirationDate | date}}, please renew."
+                "expired": "You license has expired on {{expirationDate | amParse | date}}, please renew."
             },
             "modulesAutoInstallation": {
                 "labels": {
@@ -729,6 +783,10 @@
             "api-key-delete": {
                 "title": "Delete confirmation",
                 "message": "Are you sure you want to delete this API key?"
+            },
+            "app-restart": {
+                "title": "Application restart",
+                "message": "Are you sure you want to restart the application?"
             }
         }
     }
